@@ -1,0 +1,182 @@
+//res资源、jniLibs资源、清单文件不能打进jar包里,drawable资源可以放进assets文件夹里
+//def isMakeJar = true
+def isMakeJar = false
+
+if (isMakeJar) {
+    apply plugin: 'com.android.library'
+} else {
+    apply plugin: 'com.android.application'
+}
+
+android {
+    compileSdkVersion 27
+    buildToolsVersion "27.0.3"
+
+    defaultConfig {
+        if (!isMakeJar) {
+            applicationId "com.rastar.testjar123"
+        }
+        minSdkVersion 15
+        targetSdkVersion 27
+        versionCode 100
+        versionName "1.0.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // 配置结构
+    sourceSets {
+        main {
+            if (!isMakeJar) {
+                manifest.srcFile 'src/main/AndroidManifest-release.xml'
+                assets.srcDirs = ['src/main/assets-release']
+            } else {
+                manifest.srcFile 'src/main/AndroidManifest.xml'
+                assets.srcDirs = ['src/main/assets']
+            }
+
+            java.srcDirs = ['src/main/java']
+            res.srcDirs = ['src/main/res']
+            resources.srcDirs = ['src/main/resources']
+            aidl.srcDirs = ['src/main/aidl']
+            renderscript.srcDirs = ['src/maom']
+            jniLibs.srcDir 'src/main/jniLibs'
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+}
+
+dependencies {
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+    compile 'com.android.support:appcompat-v7:27.0.2'
+    compile 'com.android.support:design:27.0.2'
+    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+    testCompile 'junit:junit:4.12'
+    androidTestCompile 'com.android.support.test:runner:1.0.1'
+    androidTestCompile 'com.android.support.test.espresso:espresso-core:3.0.1'
+    if (isMakeJar) {
+        compile files('libs/gson-2.8.0.jar')
+    }
+}
+
+//方式一(isMakeJar必须为true):
+def jarName = "TestJar_V1.0.jar"
+
+task makeJar1(type: Copy) {
+    delete 'build/' + jarName //删除之前的旧jar包
+    from('build/intermediates/bundles/default/') //从这个目录下取出默认jar包
+    into('build/') //将jar包输出到指定目录下
+    include('classes.jar')
+    rename('classes.jar', jarName) //自定义jar包的名字
+}
+
+makeJar1.dependsOn(build)
+
+//方式二(isMakeJar必须为true):
+def _BASENAME = "TestJar"
+def _VERSION = "_V2.0"
+def _DestinationPath = "build" //生成jar包的位置
+def zipFile = file('build/intermediates/bundles/default/classes.jar') //待打包文件位置
+
+task deleteBuild(type: Delete) {
+    delete _DestinationPath + _BASENAME + _VERSION + ".jar"
+}
+
+task makeJar2(type: Jar) {
+    from zipTree(zipFile)
+    from fileTree(dir: 'src/main', includes: ['assets/**']) //将assets目录打入jar包
+    baseName = _BASENAME + _VERSION
+    destinationDir = file(_DestinationPath)
+}
+
+makeJar2.dependsOn(deleteBuild, build)
+
+//方式三(isMakeJar必须为true):
+task clearJar(type: Delete) {
+    delete 'build/TestJar_V3.0.jar' //jar包的名字，随便命名
+}
+
+task makeJar3(type: Jar) {
+    //指定生成的jar名
+    baseName 'TestJar_V3.0'
+    //打包到jar后的目录结构
+    destinationDir file('build')
+    //从哪里打包class文件
+    from zipTree(file('build/intermediates/bundles/default/classes.jar'))
+    //将assets目录打入jar包
+    from fileTree(dir: 'src/main', includes: ['assets/**'])
+    //去掉不需要打包的目录和文件
+    exclude('test/', 'BuildConfig.class', 'R.class')
+    //去掉'BuildConfig.class'文件
+    exclude {
+        (it.name == 'BuildConfig.class')
+    }
+}
+
+makeJar3.dependsOn(clearJar, build)
+
+//方式四(isMakeJar必须为true):
+def SDK_BASENAME = "TestJar"//打包后名字
+def SDK_VERSION = "_V4.0"////${defaultConfig.versionName}
+def SDK_NAME = SDK_BASENAME + SDK_VERSION + ".jar"
+def jarDestinationPath = "build/"//保存目录
+task makeJar4(type: Jar) {//生成jar
+    delete jarDestinationPath + SDK_NAME
+    //将assets目录打入jar包
+    from fileTree(dir: 'src/main', includes: ['assets/**'])
+    //从哪里打包class文件
+    from zipTree(file('build/intermediates/bundles/release/classes.jar'))
+    if (isMakeJar) {
+        //把第三方jar包打入jar包
+        from zipTree(file('libs/gson-2.8.0.jar'))
+    }
+    //清单配置文件
+//    from fileTree(dir: 'src/main', includes: ['AndroidManifest.xml'])
+    //R.txt
+//    from('build/intermediates/attr/R.txt')
+    baseName = SDK_BASENAME + SDK_VERSION
+    //生成jar包目的地
+    destinationDir = file(jarDestinationPath)
+}
+makeJar4.dependsOn(clean, build)
+build.mustRunAfter(clean)
+
+//方式五:
+apply plugin: 'jar-gradle-plugin'
+BuildJar {
+    //输出目录
+    outputFileDir = project.buildDir.path + "/jar"
+    //输出原始jar包名
+    outputFileName = "TestJar_V5.0.jar"
+    //输出混淆jar包名
+    outputProguardFileName = "TestJar_V5.0_proguard.jar"
+    //混淆配置
+    proguardConfigFile = "proguard-rules.pro"
+    //是否需要默认的混淆配置proguard-android.txt
+    needDefaultProguard = true
+    applyMappingFile = "originMapping/mapping.txt"
+    //需要输出jar的包名列表,当此参数为空时，则默认全项目输出,支持多包,如 includePackage=['com/adison/testjarplugin/include','com/adison/testjarplugin/include1'...]
+    includePackage = []
+    //不需要输出jar的jar包列表,如['baidu.jar','baidu1.jar'...]
+    excludeJar = []
+    //不需要输出jar的类名列表,如['baidu.calss','baidu1.class'...]
+    excludeClass = []
+    //不需要输出jar的包名列表,如 excludePackage=['com/adison/testjarplugin/exclude','com/adison/testjarplugin/exclude1'...]
+    excludePackage = []
+}
+
+
+
